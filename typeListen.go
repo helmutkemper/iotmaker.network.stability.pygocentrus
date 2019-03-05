@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+type pygocentrusListenFunc func(inData []byte) (int, []byte)
+
 type Listen struct {
 	In            Connection
 	Out           Connection
@@ -14,6 +16,7 @@ type Listen struct {
 	error         error
 	inConnection  net.Conn
 	outConnection net.Conn
+	attack        pygocentrusListenFunc
 }
 
 func (el *Listen) Listen() error {
@@ -56,6 +59,52 @@ func (el *Listen) handle() {
 	inChannel = el.makeChannelFromConnection(el.inConnection)
 	outChannel = el.makeChannelFromConnection(el.outConnection)
 
+	if el.Pygocentrus.Enabled == true {
+
+		var randAttack int
+
+		var list = make([]pygocentrusListenFunc, 0)
+
+		if el.Pygocentrus.Delay.Rate != 0.0 {
+
+			if el.Pygocentrus.Delay.Rate >= el.inLineRand().Float64() {
+				list = append(list, el.pygocentrusDelay)
+			}
+
+		}
+
+		if el.Pygocentrus.DontRespond.Rate != 0.0 {
+
+			if el.Pygocentrus.DontRespond.Rate >= el.inLineRand().Float64() {
+				list = append(list, el.pygocentrusDontRespond)
+			}
+
+		}
+
+		if el.Pygocentrus.DeleteContent != 0.0 {
+
+			if el.Pygocentrus.DeleteContent >= el.inLineRand().Float64() {
+				list = append(list, el.pygocentrusDeleteContent)
+			}
+
+		}
+
+		if el.Pygocentrus.ChangeContent.Rate != 0.0 {
+
+			if el.Pygocentrus.ChangeContent.Rate >= el.inLineRand().Float64() {
+				list = append(list, el.pygocentrusChangeContent)
+			}
+
+		}
+
+		listLength := len(list)
+		if listLength != 0 {
+			el.Pygocentrus.SetAttack()
+			randAttack = el.inLineRand().Intn(len(list))
+			el.attack = list[randAttack]
+		}
+	}
+
 	for {
 		select {
 		case bytesBufferInChannel = <-inChannel:
@@ -96,7 +145,12 @@ func (el *Listen) makeChannelFromConnection(conn net.Conn) chan []byte {
 		for {
 
 			bufferLength, err = conn.Read(bytesBuffer)
-			fmt.Printf("bytesBuffer: %v\n\n", bytesBuffer)
+			//fmt.Printf("bytesBuffer: %v\n\n", bytesBuffer)
+
+			if el.attack != nil {
+				bufferLength, bytesBuffer = el.attack(bytesBuffer)
+			}
+
 			if bufferLength > 0 {
 
 				bytesBufferToChannel := make([]byte, bufferLength)
