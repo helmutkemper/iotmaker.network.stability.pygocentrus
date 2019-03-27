@@ -5,7 +5,7 @@ type Pygocentrus struct {
 	Delay            rateMaxMin
 	DontRespond      rateMaxMin
 	ChangeLength     float64
-	ChangeContent    changeContent
+	ChangeContent    ChangeContent
 	DeleteContent    float64
 	successfulAttack bool
 }

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type changeContent struct {
+type ChangeContent struct {
 	ChangeRateMin  float64
 	ChangeRateMax  float64
 	ChangeBytesMin int
@@ -14,7 +14,7 @@ type changeContent struct {
 	Rate           float64
 }
 
-func (el *changeContent) prepare() error {
+func (el *ChangeContent) prepare() error {
 	if el.Rate == 0.0 {
 		return nil
 	}
@@ -39,7 +39,7 @@ func (el *changeContent) prepare() error {
 	return nil
 }
 
-func (el *changeContent) GetRandomByMaxMin(length int) int {
+func (el *ChangeContent) GetRandomByMaxMin(length int) int {
 	r1 := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	if el.ChangeRateMin != 0.0 || el.ChangeRateMax != 0.0 {
@@ -52,6 +52,6 @@ func (el *changeContent) GetRandomByMaxMin(length int) int {
 	return r1.Intn(el.ChangeBytesMax-el.ChangeBytesMin) + el.ChangeBytesMin
 }
 
-func (el *changeContent) GetRandomByLength(length int) int {
+func (el *ChangeContent) GetRandomByLength(length int) int {
 	return rand.New(rand.NewSource(time.Now().UnixNano())).Intn(length)
 }
