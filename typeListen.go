@@ -1,7 +1,6 @@
 package pygocentrus
 
 import (
-	"fmt"
 	"math/rand"
 	"net"
 	"time"
@@ -29,7 +28,6 @@ func (el *Listen) Listen() error {
 	}
 
 	for {
-		fmt.Println("pygocentrus incoming data...")
 		el.inConnection, err = listener.Accept()
 		if err != nil {
 			return err
@@ -145,7 +143,6 @@ func (el *Listen) makeChannelFromConnection(conn net.Conn) chan []byte {
 		for {
 
 			bufferLength, err = conn.Read(bytesBuffer)
-			//fmt.Printf("bytesBuffer: %v\n\n", bytesBuffer)
 
 			if el.attack != nil {
 				bufferLength, bytesBuffer = el.attack(bytesBuffer)
