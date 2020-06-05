@@ -1,8 +1,8 @@
-package pygocentrus
+package attack
 
 import "github.com/helmutkemper/pygocentrus/changeContent"
 
-type Pygocentrus struct {
+type Attack struct {
 	Enabled       bool
 	Delay         RateMaxMin
 	DontRespond   RateMaxMin

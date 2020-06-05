@@ -1,8 +1,8 @@
-package listener
+package pygocentrus
 
 import "net"
 
-func (el *Listener) Listen() error {
+func (el *Listener) AttackListener() error {
 	var listener net.Listener
 	var err error
 

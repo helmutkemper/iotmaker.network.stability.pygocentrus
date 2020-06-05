@@ -1,4 +1,4 @@
-package listener
+package pygocentrus
 
 import "net"
 
@@ -58,7 +58,7 @@ func (el *Listener) handle() {
 
 		listLength := len(list)
 		if listLength != 0 {
-			el.Pygocentrus.SetAttack()
+			//el.Pygocentrus.SetAttack()
 			randAttack = el.newRandGeneratorHeader().Intn(len(list))
 			el.attack = list[randAttack]
 		}

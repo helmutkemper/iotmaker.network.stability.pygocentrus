@@ -1,4 +1,4 @@
-package listener
+package pygocentrus
 
 func (el *Listener) attackChangeContent(inData []byte) (int, []byte) {
 	//seelog.Debugf("%v%v were eaten by a pygocentrus attack: change content", req.RemoteAddr, req.RequestURI)

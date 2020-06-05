@@ -1,7 +1,7 @@
-package listener
+package pygocentrus
 
 import (
-	"github.com/helmutkemper/pygocentrus"
+	"github.com/helmutkemper/pygocentrus/attack"
 	"github.com/helmutkemper/pygocentrus/connection"
 	"net"
 )
@@ -9,7 +9,7 @@ import (
 type Listener struct {
 	In            connection.Connection
 	Out           connection.Connection
-	Pygocentrus   pygocentrus.Pygocentrus
+	Pygocentrus   attack.Attack
 	error         error
 	inConnection  net.Conn
 	outConnection net.Conn

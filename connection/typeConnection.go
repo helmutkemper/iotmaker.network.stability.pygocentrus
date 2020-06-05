@@ -1,8 +1,8 @@
 package connection
 
-import "github.com/helmutkemper/pygocentrus/listener"
+import "github.com/helmutkemper/pygocentrus/pygocentrus"
 
 type Connection struct {
 	Address  string
-	Protocol listener.Protocol
+	Protocol pygocentrus.Protocol
 }

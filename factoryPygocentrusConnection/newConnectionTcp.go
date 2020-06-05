@@ -2,7 +2,7 @@ package factoryPygocentrusConnection
 
 import (
 	"github.com/helmutkemper/pygocentrus/connection"
-	"github.com/helmutkemper/pygocentrus/listener"
+	"github.com/helmutkemper/pygocentrus/pygocentrus"
 )
 
 /*
@@ -12,6 +12,6 @@ pt_br: Prepara uma nova conexão TCP
 func NewConnectionTCP(address string) connection.Connection {
 	return connection.Connection{
 		Address:  address,
-		Protocol: listener.KProtocolTCP,
+		Protocol: pygocentrus.KProtocolTCP,
 	}
 }

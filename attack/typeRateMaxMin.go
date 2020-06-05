@@ -1,4 +1,4 @@
-package pygocentrus
+package attack
 
 type RateMaxMin struct {
 	Rate float64

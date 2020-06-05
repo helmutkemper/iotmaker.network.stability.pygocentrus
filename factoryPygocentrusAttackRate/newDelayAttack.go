@@ -1,13 +1,13 @@
 package factoryPygocentrusAttackRate
 
 import (
-	"github.com/helmutkemper/pygocentrus"
+	"github.com/helmutkemper/pygocentrus/attack"
 )
 
-func NewDelayAttack(attackRate float64, delayInMicrosecondMin, delayInMicrosecondMax int) (error, pygocentrus.Pygocentrus) {
-	return nil, pygocentrus.Pygocentrus{
+func NewDelayAttack(attackRate float64, delayInMicrosecondMin, delayInMicrosecondMax int) (error, attack.Attack) {
+	return nil, attack.Attack{
 		Enabled: true,
-		Delay: pygocentrus.RateMaxMin{
+		Delay: attack.RateMaxMin{
 			Rate: attackRate,
 			Min:  delayInMicrosecondMin,
 			Max:  delayInMicrosecondMax,
