@@ -1,20 +1,8 @@
-package pygocentrus
+package changeContent
 
-import (
-	"errors"
-	"math/rand"
-	"time"
-)
+import "errors"
 
-type ChangeContent struct {
-	ChangeRateMin  float64
-	ChangeRateMax  float64
-	ChangeBytesMin int
-	ChangeBytesMax int
-	Rate           float64
-}
-
-func (el *ChangeContent) prepare() error {
+func (el *ChangeContent) Verify() error {
 	if el.Rate == 0.0 {
 		return nil
 	}
@@ -37,21 +25,4 @@ func (el *ChangeContent) prepare() error {
 	}
 
 	return nil
-}
-
-func (el *ChangeContent) GetRandomByMaxMin(length int) int {
-	r1 := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	if el.ChangeRateMin != 0.0 || el.ChangeRateMax != 0.0 {
-		var changeMin = int(float64(length) * el.ChangeRateMin)
-		var changeMax = int(float64(length) * el.ChangeRateMax)
-
-		return r1.Intn(changeMax-changeMin) + changeMin
-	}
-
-	return r1.Intn(el.ChangeBytesMax-el.ChangeBytesMin) + el.ChangeBytesMin
-}
-
-func (el *ChangeContent) GetRandomByLength(length int) int {
-	return rand.New(rand.NewSource(time.Now().UnixNano())).Intn(length)
 }
