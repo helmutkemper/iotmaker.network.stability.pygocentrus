@@ -2,8 +2,8 @@ package pygocentrus
 
 type Pygocentrus struct {
 	Enabled          bool
-	Delay            rateMaxMin
-	DontRespond      rateMaxMin
+	Delay            RateMaxMin
+	DontRespond      RateMaxMin
 	ChangeLength     float64
 	ChangeContent    ChangeContent
 	DeleteContent    float64

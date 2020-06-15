@@ -1,6 +1,6 @@
 package pygocentrus
 
-type rateMaxMin struct {
+type RateMaxMin struct {
 	Rate float64
 	Min  int
 	Max  int
