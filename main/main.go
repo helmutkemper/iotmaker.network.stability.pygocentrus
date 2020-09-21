@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	iotmakerdocker "github.com/helmutkemper/iotmaker.docker/v1.0.0"
+	pygocentrus "github.com/helmutkemper/iotmaker.network.stability.pygocentrus"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -77,47 +78,45 @@ func main() {
 		panic(string(debug.Stack()))
 	}
 
-	//l := pygocentrus.Listen{
-	//	In: pygocentrus.Connection{
-	//		Name: "mongo out",
-	//	  Address:  ":27016",
-	//		Protocol: pygocentrus.KProtocolTcp,
-	//	},
-	//	Out: pygocentrus.Connection{
-	//	  Name: "mongo in",
-	//		Address:  "127.0.0.1:27017",
-	//		Protocol: pygocentrus.KProtocolTcp,
-	//	},
-	//	Pygocentrus: pygocentrus.Pygocentrus{
-	//		Enabled: false,
-	//		Delay: pygocentrus.RateMaxMin{
-	//			Rate: 0.5,
-	//			Min:  int(time.Millisecond * 300),
-	//			Max:  int(time.Millisecond * 600),
-	//		},
-	//		DontRespond: pygocentrus.RateMaxMin{
-	//			Rate: 0,
-	//			Min:  0,
-	//			Max:  0,
-	//		},
-	//		ChangeLength: 0,
-	//		ChangeContent: pygocentrus.ChangeContent{
-	//			ChangeRateMin:  0,
-	//			ChangeRateMax:  0,
-	//			ChangeBytesMin: 0,
-	//			ChangeBytesMax: 0,
-	//			Rate:           0,
-	//		},
-	//		DeleteContent: 0,
-	//	},
-	//}
+	l := pygocentrus.Listen{
+		In: pygocentrus.Connection{
+			Address:  ":27016",
+			Protocol: "tcp",
+		},
+		Out: pygocentrus.Connection{
+			Address:  ":27017",
+			Protocol: "tcp",
+		},
+		Pygocentrus: pygocentrus.Pygocentrus{
+			Enabled: true,
+			Delay: pygocentrus.RateMaxMin{
+				Rate: 1.0,
+				Min:  int(time.Millisecond * 100),
+				Max:  int(time.Millisecond * 500),
+			},
+			DontRespond: pygocentrus.RateMaxMin{
+				Rate: 0,
+				Min:  0,
+				Max:  0,
+			},
+			ChangeLength: 0,
+			ChangeContent: pygocentrus.ChangeContent{
+				ChangeRateMin:  0,
+				ChangeRateMax:  0,
+				ChangeBytesMin: 0,
+				ChangeBytesMax: 0,
+				Rate:           0,
+			},
+			DeleteContent: 0,
+		},
+	}
 
-	//go func() {
-	//  err = l.Listen()
-	//  if err != nil {
-	//    panic(err)
-	//  }
-	//}()
+	go func() {
+		err = l.Listen()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	//go func() {
 	//  var err error
@@ -127,7 +126,7 @@ func main() {
 	//  }
 	//}()
 
-	go proxy(27016, 27017)
+	//go proxy(27016, 27017)
 
 	//var conn net.Conn
 	//conn, err = net.Dial("tcp", ":27016")
@@ -146,8 +145,10 @@ func main() {
 	//}
 	//conn.Close()
 	//
-	//time.Sleep(time.Second*2)
+	//time.Sleep(time.Second*500)
 	//os.Exit(0)
+
+	fmt.Printf("conexão\n")
 
 	mongoClient, err = mongo.NewClient(options.Client().ApplyURI("mongodb://127.0.0.1:27016"))
 	if err != nil {
@@ -164,6 +165,19 @@ func main() {
 	if err != nil {
 		panic(string(debug.Stack()))
 	}
+
+	type Trainer struct {
+		Name string
+		Age  int
+		City string
+	}
+	collection := mongoClient.Database("test").Collection("trainers")
+	ash := Trainer{"Ash", 10, "Pallet Town"}
+	_, err = collection.InsertOne(context.TODO(), ash)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("fim\n")
 }
 
 func proxy(inPort, outPort int) {
