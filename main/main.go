@@ -52,6 +52,8 @@ func main() {
 	//  panic(string(debug.Stack()))
 	//}
 
+	var timeOut = time.Second * 30
+
 	var mongoClient *mongo.Client
 	var ctx context.Context
 	mongoClient, err = mongo.NewClient(options.Client().ApplyURI("mongodb://127.0.0.1:27017"))
@@ -59,14 +61,14 @@ func main() {
 		panic(string(debug.Stack()))
 	}
 
-	ctx, _ = context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, _ = context.WithTimeout(context.Background(), timeOut)
 	err = mongoClient.Connect(ctx)
 	if err != nil {
 		panic(string(debug.Stack()))
 	}
 
 	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), timeOut)
 	err = mongoClient.Ping(ctx, readpref.Primary())
 	if err != nil {
 		panic(string(debug.Stack()))
@@ -90,12 +92,12 @@ func main() {
 		Pygocentrus: pygocentrus.Pygocentrus{
 			Enabled: true,
 			Delay: pygocentrus.RateMaxMin{
-				Rate: 1.0,
-				Min:  int(time.Millisecond * 100),
-				Max:  int(time.Millisecond * 500),
+				Rate: 0.3,
+				Min:  int(time.Millisecond * 1),
+				Max:  int(time.Millisecond * 5),
 			},
 			DontRespond: pygocentrus.RateMaxMin{
-				Rate: 0,
+				Rate: 0.3,
 				Min:  0,
 				Max:  0,
 			},
@@ -148,6 +150,8 @@ func main() {
 	//time.Sleep(time.Second*500)
 	//os.Exit(0)
 
+	start := time.Now()
+
 	fmt.Printf("conexão\n")
 
 	mongoClient, err = mongo.NewClient(options.Client().ApplyURI("mongodb://127.0.0.1:27016"))
@@ -160,9 +164,10 @@ func main() {
 		panic(string(debug.Stack()))
 	}
 
-	ctx, cancel = context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), timeOut)
 	err = mongoClient.Ping(ctx, readpref.Primary())
 	if err != nil {
+		fmt.Printf("error: %v\n", err.Error())
 		panic(string(debug.Stack()))
 	}
 
@@ -178,6 +183,8 @@ func main() {
 		panic(err)
 	}
 	fmt.Printf("fim\n")
+	duration := time.Since(start)
+	fmt.Printf("Duration: %v\n\n", duration)
 }
 
 func proxy(inPort, outPort int) {

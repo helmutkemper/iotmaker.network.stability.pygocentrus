@@ -1,12 +1,13 @@
 package pygocentrus
 
 import (
+	"fmt"
 	"math/rand"
 	"net"
 	"time"
 )
 
-type pygocentrusListenFunc func(inData []byte) (int, []byte)
+type pygocentrusListenFunc func(inData []byte, length int) (int, []byte)
 
 type Listen struct {
 	In            Connection
@@ -37,7 +38,6 @@ func (el *Listen) Listen() error {
 		if el.error != nil {
 			return el.error
 		}
-
 	}
 }
 
@@ -145,13 +145,13 @@ func (el *Listen) makeChannelFromConnection(conn net.Conn) chan []byte {
 			bufferLength, err = conn.Read(bytesBuffer)
 
 			if el.attack != nil {
-				bufferLength, bytesBuffer = el.attack(bytesBuffer)
+				bufferLength, bytesBuffer = el.attack(bytesBuffer, bufferLength)
 			}
 
 			if bufferLength > 0 {
 
 				bytesBufferToChannel := make([]byte, bufferLength)
-				copy(bytesBufferToChannel, bytesBuffer[:bufferLength])
+				copy(bytesBufferToChannel, bytesBuffer)
 				connectionDataChannel <- bytesBufferToChannel
 
 			}
@@ -168,37 +168,35 @@ func (el *Listen) makeChannelFromConnection(conn net.Conn) chan []byte {
 	return connectionDataChannel
 }
 
-func (el *Listen) pygocentrusDelay(inData []byte) (int, []byte) {
+func (el *Listen) pygocentrusDelay(inData []byte, length int) (int, []byte) {
 	//seelog.Debugf("%v%v were delayed by a pygocentrus attack: delay content", req.RemoteAddr, req.RequestURI)
 
-	time.Sleep(time.Duration(el.inLineIntRange(el.Pygocentrus.Delay.Min, el.Pygocentrus.Delay.Max)) * time.Microsecond)
+	time.Sleep(time.Duration(el.inLineIntRange(el.Pygocentrus.Delay.Min, el.Pygocentrus.Delay.Max)))
 
-	return len(inData), inData
+	return length, inData
 
 }
 
-func (el *Listen) pygocentrusDontRespond(inData []byte) (int, []byte) {
-	//seelog.Debugf("%v%v were eaten by a pygocentrus attack: dont respond", req.RemoteAddr, req.RequestURI)
+func (el *Listen) pygocentrusDontRespond(inData []byte, length int) (int, []byte) {
+	fmt.Printf("pygocentrus attack: dont respond\n")
 
 	time.Sleep(time.Duration(el.inLineIntRange(el.Pygocentrus.Delay.Min, el.Pygocentrus.Delay.Max)) * time.Microsecond)
 	return 0, nil
 
 }
 
-func (el *Listen) pygocentrusDeleteContent(inData []byte) (int, []byte) {
+func (el *Listen) pygocentrusDeleteContent(inData []byte, length int) (int, []byte) {
 	//seelog.Debugf("%v%v were eaten by a pygocentrus attack: delete content", req.RemoteAddr, req.RequestURI)
 
-	n := len(inData)
-	inData = make([]byte, n)
+	inData = make([]byte, length)
 
-	return n, inData
+	return length, inData
 
 }
 
-func (el *Listen) pygocentrusChangeContent(inData []byte) (int, []byte) {
+func (el *Listen) pygocentrusChangeContent(inData []byte, length int) (int, []byte) {
 	//seelog.Debugf("%v%v were eaten by a pygocentrus attack: change content", req.RemoteAddr, req.RequestURI)
 
-	length := len(inData)
 	forLength := el.Pygocentrus.ChangeContent.GetRandomByMaxMin(length)
 	for i := 0; i != forLength; i += 1 {
 		indexChange := el.Pygocentrus.ChangeContent.GetRandomByLength(length)
