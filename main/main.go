@@ -52,7 +52,7 @@ func main() {
 	//  panic(string(debug.Stack()))
 	//}
 
-	var timeOut = time.Second * 30
+	var timeOut = time.Second * 33
 
 	var mongoClient *mongo.Client
 	var ctx context.Context
@@ -80,14 +80,27 @@ func main() {
 		panic(string(debug.Stack()))
 	}
 
+	var inA, outA *net.TCPAddr
+	inA, err = net.ResolveTCPAddr("tcp", "127.0.0.1:27016")
+	if err != nil {
+		panic(string(debug.Stack()))
+	}
+
+	outA, err = net.ResolveTCPAddr("tcp", "127.0.0.1:27017")
+	if err != nil {
+		panic(string(debug.Stack()))
+	}
+
 	l := pygocentrus.Listen{
 		In: pygocentrus.Connection{
-			Address:  ":27016",
+			Address:  "127.0.0.1:27016",
 			Protocol: "tcp",
+			A:        inA,
 		},
 		Out: pygocentrus.Connection{
-			Address:  ":27017",
+			Address:  "127.0.0.1:27017",
 			Protocol: "tcp",
+			A:        outA,
 		},
 		Pygocentrus: pygocentrus.Pygocentrus{
 			Enabled: true,
@@ -109,7 +122,7 @@ func main() {
 				ChangeBytesMax: 0,
 				Rate:           0,
 			},
-			DeleteContent: 0,
+			DeleteContent: 0.3,
 		},
 	}
 

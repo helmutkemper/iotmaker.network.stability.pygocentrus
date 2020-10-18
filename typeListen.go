@@ -1,38 +1,61 @@
 package pygocentrus
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"net"
+	"sync"
 	"time"
 )
 
 type pygocentrusListenFunc func(inData []byte, length int) (int, []byte)
+
+type data struct {
+	channel chan bool
+	buffer  [][]byte
+	length  []int
+}
+
+func (el *data) init() {
+	el.buffer = make([][]byte, 0)
+	el.channel = make(chan bool, 1)
+	el.length = make([]int, 0)
+}
 
 type Listen struct {
 	In            Connection
 	Out           Connection
 	Pygocentrus   Pygocentrus
 	error         error
-	inConnection  net.Conn
-	outConnection net.Conn
+	inConnection  *net.TCPConn
+	inData        data
+	outData       data
+	outConnection *net.TCPConn
 	attack        pygocentrusListenFunc
+	mutex         sync.Mutex
+	ticker        *time.Ticker
 }
 
-func (el *Listen) Listen() error {
-	var listener net.Listener
-	var err error
+func (el *Listen) Listen() (err error) {
 
-	listener, err = net.Listen(el.In.Protocol, el.In.Address)
+	el.inData.init()
+	el.outData.init()
+
+	var listener *net.TCPListener
+
+	listener, err = net.ListenTCP("tcp", el.In.A)
 	if err != nil {
-		return err
+		return
 	}
 
 	for {
-		el.inConnection, err = listener.Accept()
+		el.inConnection, err = listener.AcceptTCP()
 		if err != nil {
-			return err
+			return
 		}
+
+		el.ticker = time.NewTicker(11000 * time.Millisecond)
 
 		go el.handle()
 		if el.error != nil {
@@ -43,129 +66,95 @@ func (el *Listen) Listen() error {
 
 func (el *Listen) handle() {
 	var err error
-	var inChannel chan []byte
-	var outChannel chan []byte
-	var bytesBufferInChannel []byte
-	var bytesBufferOutChannel []byte
 
-	el.outConnection, err = net.Dial(el.Out.Protocol, el.Out.Address)
-	if err != nil {
+	el.outConnection, err = net.DialTCP("tcp", nil, el.Out.A)
+	if err != nil && err.Error() != "EOF" {
 		el.error = err
 		return
 	}
 
-	inChannel = el.makeChannelFromConnection(el.inConnection)
-	outChannel = el.makeChannelFromConnection(el.outConnection)
-
-	if el.Pygocentrus.Enabled == true {
-
-		var randAttack int
-
-		var list = make([]pygocentrusListenFunc, 0)
-
-		if el.Pygocentrus.Delay.Rate != 0.0 {
-
-			if el.Pygocentrus.Delay.Rate >= el.inLineRand().Float64() {
-				list = append(list, el.pygocentrusDelay)
-			}
-
-		}
-
-		if el.Pygocentrus.DontRespond.Rate != 0.0 {
-
-			if el.Pygocentrus.DontRespond.Rate >= el.inLineRand().Float64() {
-				list = append(list, el.pygocentrusDontRespond)
-			}
-
-		}
-
-		if el.Pygocentrus.DeleteContent != 0.0 {
-
-			if el.Pygocentrus.DeleteContent >= el.inLineRand().Float64() {
-				list = append(list, el.pygocentrusDeleteContent)
-			}
-
-		}
-
-		if el.Pygocentrus.ChangeContent.Rate != 0.0 {
-
-			if el.Pygocentrus.ChangeContent.Rate >= el.inLineRand().Float64() {
-				list = append(list, el.pygocentrusChangeContent)
-			}
-
-		}
-
-		listLength := len(list)
-		if listLength != 0 {
-			el.Pygocentrus.SetAttack()
-			randAttack = el.inLineRand().Intn(len(list))
-			el.attack = list[randAttack]
-		}
-	}
+	el.makeChannelFromInDataConnection(el.inConnection, &el.inData, "in")
+	el.makeChannelFromInDataConnection(el.outConnection, &el.outData, "out")
 
 	for {
 		select {
-		case bytesBufferInChannel = <-inChannel:
-			if bytesBufferInChannel == nil {
-				return
-			} else {
-				_, err = el.outConnection.Write(bytesBufferInChannel)
+		case <-el.inData.channel:
+			el.mutex.Lock()
+			for {
+				if len(el.inData.buffer) == 0 {
+					el.mutex.Unlock()
+					break
+				}
+
+				_, err = el.outConnection.Write(el.inData.buffer[0])
 				if err != nil {
 					el.error = err
 					return
 				}
+
+				el.inData.buffer = el.inData.buffer[1:]
 			}
-		case bytesBufferOutChannel = <-outChannel:
-			if bytesBufferOutChannel == nil {
-				return
-			} else {
-				_, err = el.inConnection.Write(bytesBufferOutChannel)
+
+		case <-el.ticker.C:
+			el.mutex.Lock()
+			for {
+				if len(el.outData.buffer) == 0 {
+					el.mutex.Unlock()
+					break
+				}
+
+				_, err = el.inConnection.Write(el.outData.buffer[0])
 				if err != nil {
 					el.error = err
 					return
 				}
+
+				el.outData.buffer = el.outData.buffer[1:]
 			}
 		}
 	}
 }
 
-func (el *Listen) makeChannelFromConnection(conn net.Conn) chan []byte {
-	var connectionDataChannel chan []byte
-
-	connectionDataChannel = make(chan []byte)
-
+func (el *Listen) makeChannelFromInDataConnection(conn *net.TCPConn, data *data, direction string) {
 	go func() {
 
-		var bytesBuffer = make([]byte, 1024)
 		var bufferLength int
 		var err error
 
+		err = conn.SetKeepAlive(true)
+		if err != nil {
+			panic(err)
+		}
+
 		for {
-
-			bufferLength, err = conn.Read(bytesBuffer)
-
-			if el.attack != nil {
-				bufferLength, bytesBuffer = el.attack(bytesBuffer, bufferLength)
-			}
-
-			if bufferLength > 0 {
-
-				bytesBufferToChannel := make([]byte, bufferLength)
-				copy(bytesBufferToChannel, bytesBuffer)
-				connectionDataChannel <- bytesBufferToChannel
-
-			}
-			if err != nil {
-				connectionDataChannel <- nil
+			var buffer = make([]byte, 2048)
+			bufferLength, err = conn.Read(buffer)
+			if err != nil && err.Error() != "EOF" {
 				el.error = err
 				break
 			}
 
+			if err != nil && err.Error() == "EOF" {
+				break
+			}
+
+			fmt.Printf("%v\n%v\n", direction, hex.Dump(buffer[:bufferLength]))
+
+			if cap(data.buffer) == 0 {
+				data.buffer = make([][]byte, 0)
+			}
+			data.buffer = append(data.buffer, buffer[:bufferLength])
+
+			if cap(data.length) == 0 {
+				data.length = make([]int, 0)
+			}
+			data.length = append(data.length, bufferLength)
+
+			if len(data.channel) == 0 {
+				data.channel <- true
+			}
 		}
-
 	}()
-
-	return connectionDataChannel
 }
 
 func (el *Listen) pygocentrusDelay(inData []byte, length int) (int, []byte) {
@@ -213,4 +202,49 @@ func (el *Listen) inLineRand() *rand.Rand {
 
 func (el *Listen) inLineIntRange(min, max int) int {
 	return el.inLineRand().Intn(max-min) + min
+}
+
+func (el *Listen) SelectAttack() {
+
+	var randAttack int
+	var list = make([]pygocentrusListenFunc, 0)
+
+	if el.Pygocentrus.Delay.Rate != 0.0 {
+
+		if el.Pygocentrus.Delay.Rate >= el.inLineRand().Float64() {
+			list = append(list, el.pygocentrusDelay)
+		}
+
+	}
+
+	if el.Pygocentrus.DontRespond.Rate != 0.0 {
+
+		if el.Pygocentrus.DontRespond.Rate >= el.inLineRand().Float64() {
+			list = append(list, el.pygocentrusDontRespond)
+		}
+
+	}
+
+	if el.Pygocentrus.DeleteContent != 0.0 {
+
+		if el.Pygocentrus.DeleteContent >= el.inLineRand().Float64() {
+			list = append(list, el.pygocentrusDeleteContent)
+		}
+
+	}
+
+	if el.Pygocentrus.ChangeContent.Rate != 0.0 {
+
+		if el.Pygocentrus.ChangeContent.Rate >= el.inLineRand().Float64() {
+			list = append(list, el.pygocentrusChangeContent)
+		}
+
+	}
+
+	listLength := len(list)
+	if listLength != 0 {
+		el.Pygocentrus.SetAttack()
+		randAttack = el.inLineRand().Intn(len(list))
+		el.attack = list[randAttack]
+	}
 }
