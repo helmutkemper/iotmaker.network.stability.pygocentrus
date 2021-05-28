@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	dockerBuilder "github.com/helmutkemper/iotmaker.docker.builder"
@@ -8,15 +9,97 @@ import (
 	"github.com/helmutkemper/util"
 	"github.com/nats-io/nats.go"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 )
 
 type ParserFunc struct{}
 
+func (e ParserFunc) FilterMessage(data []byte) (restOdFata []byte, err error) {
+	var indexHeader = bytes.Index(data, []byte("MSG "))
+	indexHeader += 4
+	var indexSpace = bytes.Index(data[indexHeader:], []byte(" "))
+	var subject = data[indexHeader : indexHeader+indexSpace]
+	log.Printf("subject: %s", subject)
+
+	// coloca o data no início do n start message
+	data = data[indexHeader+indexSpace+1:]
+
+	var indexStart = bytes.Index(data, []byte(" "))
+	var dataStart = data[:indexStart]
+	//log.Printf("start: %s", dataStart)
+
+	// coloca o data no início do n length message
+	data = data[indexStart+1:]
+	//log.Printf("data: >%s<", data)
+
+	var indexLen = bytes.Index(data, []byte("\r"))
+	var dataLen = data[:indexLen]
+
+	//log.Printf("length: %s", dataLen)
+
+	// coloca data no início da mensagem
+	data = data[indexLen+1+1:]
+
+	var startInt int64
+	var lenInt int64
+	startInt, err = strconv.ParseInt(string(dataStart), 10, 64)
+	if err != nil {
+		return
+	}
+	lenInt, err = strconv.ParseInt(string(dataLen), 10, 64)
+	if err != nil {
+		return
+	}
+
+	var message = data[startInt-1 : lenInt]
+	log.Printf("message: %s", message)
+
+	// coloca data no fim da mensagem
+	data = data[startInt-1+lenInt+2:]
+
+	if bytes.Equal(data, []byte("PONG\r\n")) == true {
+		data = make([]byte, 0)
+	}
+
+	restOdFata = data
+	return
+}
+
 func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err error) {
-	fmt.Printf("direction: %v\n%v\n", direction, hex.Dump(data))
 	dataSize = len(data)
+
+	// \r 0x0D
+	// \n 0x0A
+	if direction == "in" {
+		if bytes.HasPrefix(data, []byte("INFO ")) == true && bytes.HasSuffix(data, []byte(" \r\n")) == true {
+			var driverInfo = data[5 : len(data)-3]
+			log.Printf("driver info: %s", driverInfo)
+			return
+		}
+
+		if bytes.Equal(data, []byte("PONG\r\n")) == true {
+			log.Printf("PONG")
+			return
+		}
+
+		var pass = false
+		for {
+			if bytes.Contains(data, []byte("MSG")) == true {
+				pass = true
+				data, _ = e.FilterMessage(data)
+				//return
+			} else {
+				if pass == true {
+					return
+				}
+				break
+			}
+		}
+	}
+
+	fmt.Printf("direction: %v\n%v\n", direction, hex.Dump(data))
 	return
 }
 
@@ -113,6 +196,7 @@ func natsTest() {
 
 	// Just to not collide using the demo server with other users.
 	subject := nats.NewInbox()
+	subject = "1234567890"
 
 	// This callback will process each message slowly
 	sub, err := nc.Subscribe(subject, func(m *nats.Msg) {
@@ -121,7 +205,7 @@ func natsTest() {
 			return
 		}
 
-		log.Printf("message: %s", m.Data)
+		log.Printf("message from sample code: %s", m.Data)
 
 		time.Sleep(100 * time.Millisecond)
 		count++
