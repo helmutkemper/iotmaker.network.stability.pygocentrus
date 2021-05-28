@@ -70,12 +70,15 @@ func (e ParserFunc) FilterMessage(data []byte) (restOdFata []byte, err error) {
 func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err error) {
 	dataSize = len(data)
 
+	fmt.Println("")
+	fmt.Println("")
+
 	// \r 0x0D
 	// \n 0x0A
 	if direction == "in" {
 		if bytes.HasPrefix(data, []byte("INFO ")) == true && bytes.HasSuffix(data, []byte(" \r\n")) == true {
 			var driverInfo = data[5 : len(data)-3]
-			log.Printf("driver info: %s", driverInfo)
+			log.Printf("nats driver info: %s", driverInfo)
 			return
 		}
 
