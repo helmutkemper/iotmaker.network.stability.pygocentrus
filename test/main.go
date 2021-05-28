@@ -29,12 +29,18 @@ func main() {
 	flag.Parse()
 	fmt.Printf("Listening: %v\nProxying: %v\n\n", *localAddr, *remoteAddr)
 
-	var p pygocentrus.ParserInterface = &ParserFunc{}
+	//var p pygocentrus.ParserInterface = &ParserFunc{}
 
 	var proxy pygocentrus.Proxy
 	proxy.SetBufferSize(32 * 1024)
-	proxy.SetParserFunction(p)
-	go proxy.Proxy(*localAddr, *remoteAddr)
+	//proxy.SetParserFunction(p)
+	go func() {
+		var err error
+		err = proxy.Proxy(*localAddr, *remoteAddr)
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	var err error
 	var timeOut = time.Second * 15
@@ -69,7 +75,7 @@ func main() {
 		City string
 	}
 
-	for i := 0; i != 100; i += 1 {
+	for i := 0; i != 1000000; i += 1 {
 		collection := mongoClient.Database("test").Collection("trainers")
 		ash := Trainer{"Ash", 10, "Pallet Town"}
 		_, err = collection.InsertOne(context.TODO(), ash)
