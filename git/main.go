@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	pygocentrus "github.com/helmutkemper/iotmaker.network.stability.pygocentrus"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -28,9 +29,9 @@ func main() {
 	flag.Parse()
 	fmt.Printf("Listening: %v\nProxying: %v\n\n", *localAddr, *remoteAddr)
 
-	var p ParserInterface = &ParserFunc{}
+	var p pygocentrus.ParserInterface = &ParserFunc{}
 
-	var proxy Proxy
+	var proxy pygocentrus.Proxy
 	proxy.SetBufferSize(32 * 1024)
 	proxy.SetParserFunction(p)
 	go proxy.Proxy(*localAddr, *remoteAddr)
