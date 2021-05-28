@@ -1,12 +1,15 @@
 package pygocentrus
 
 import (
-	"encoding/hex"
-	"fmt"
-	"math/rand"
-	"net"
-	"sync"
-	"time"
+  "errors"
+  "fmt"
+  "github.com/helmutkemper/util"
+  "log"
+  "math/rand"
+  "net"
+  "sync"
+  "syscall"
+  "time"
 )
 
 type pygocentrusListenFunc func(inData []byte, length int) (int, []byte)
@@ -39,42 +42,56 @@ type Listen struct {
 
 func (el *Listen) Listen() (err error) {
 
-	el.inData.init()
-	el.outData.init()
+  el.inData.init()
+  el.outData.init()
 
-	var listener *net.TCPListener
+  var listener *net.TCPListener
 
-	listener, err = net.ListenTCP("tcp", el.In.A)
-	if err != nil {
-		return
-	}
+  listener, err = net.ListenTCP("tcp", el.In.A)
+  if err != nil {
+    log.Printf("err: %v", err.Error())
+    util.TraceToLog()
+    return
+  }
 
-	for {
-		el.inConnection, err = listener.AcceptTCP()
-		if err != nil {
-			return
-		}
+  go el.handle()
 
-		el.ticker = time.NewTicker(11000 * time.Millisecond)
+  for {
+    el.inConnection, err = listener.AcceptTCP()
+    if err != nil {
+      log.Printf("err: %v", err.Error())
+      util.TraceToLog()
+      return
+    }
 
-		go el.handle()
-		if el.error != nil {
-			return el.error
-		}
-	}
+    //el.ticker = time.NewTicker(11000 * time.Millisecond)
+
+    el.outConnection, err = net.DialTCP("tcp", nil, el.Out.A)
+    if err != nil {
+      el.error = err
+      log.Printf("err: %v", err.Error())
+      util.TraceToLog()
+      return
+    }
+
+    el.makeChannelFromInDataConnection(el.inConnection, &el.inData, "in")
+    el.makeChannelFromInDataConnection(el.outConnection, &el.outData, "out")
+
+    if el.error != nil {
+      log.Printf("err: %v", el.error.Error())
+      util.TraceToLog()
+      return el.error
+    }
+  }
+
+  return
 }
 
 func (el *Listen) handle() {
+  log.Print("handle()")
+  defer log.Print("handle().end")
+
 	var err error
-
-	el.outConnection, err = net.DialTCP("tcp", nil, el.Out.A)
-	if err != nil && err.Error() != "EOF" {
-		el.error = err
-		return
-	}
-
-	el.makeChannelFromInDataConnection(el.inConnection, &el.inData, "in")
-	el.makeChannelFromInDataConnection(el.outConnection, &el.outData, "out")
 
 	for {
 		select {
@@ -88,14 +105,18 @@ func (el *Listen) handle() {
 
 				_, err = el.outConnection.Write(el.inData.buffer[0])
 				if err != nil {
-					el.error = err
-					return
+          if !errors.Is(err, syscall.EPIPE) {
+            el.error = err
+            log.Printf("err: %v", err.Error())
+            util.TraceToLog()
+            return
+          }
 				}
 
 				el.inData.buffer = el.inData.buffer[1:]
 			}
 
-		case <-el.ticker.C:
+		case <-el.outData.channel:
 			el.mutex.Lock()
 			for {
 				if len(el.outData.buffer) == 0 {
@@ -105,8 +126,12 @@ func (el *Listen) handle() {
 
 				_, err = el.inConnection.Write(el.outData.buffer[0])
 				if err != nil {
-					el.error = err
-					return
+          if !errors.Is(err, syscall.EPIPE) {
+            el.error = err
+            log.Printf("err: %v", err.Error())
+            util.TraceToLog()
+            return
+          }
 				}
 
 				el.outData.buffer = el.outData.buffer[1:]
@@ -116,6 +141,8 @@ func (el *Listen) handle() {
 }
 
 func (el *Listen) makeChannelFromInDataConnection(conn *net.TCPConn, data *data, direction string) {
+  log.Print("makeChannelFromInDataConnection()")
+  defer log.Print("makeChannelFromInDataConnection().end")
 	go func() {
 
 		var bufferLength int
@@ -123,22 +150,28 @@ func (el *Listen) makeChannelFromInDataConnection(conn *net.TCPConn, data *data,
 
 		err = conn.SetKeepAlive(true)
 		if err != nil {
-			panic(err)
+      log.Printf("err: %v", err.Error())
+      util.TraceToLog()
+      panic(err)
 		}
 
 		for {
 			var buffer = make([]byte, 2048)
 			bufferLength, err = conn.Read(buffer)
-			if err != nil && err.Error() != "EOF" {
-				el.error = err
-				break
-			}
+      if !errors.Is(err, syscall.EPIPE) {
+        if err != nil && err.Error() != "EOF" {
+          el.error = err
+          log.Printf("err: %v", err.Error())
+          util.TraceToLog()
+          break
+        }
 
-			if err != nil && err.Error() == "EOF" {
-				break
-			}
+        if err != nil && err.Error() == "EOF" {
+          break
+        }
+      }
 
-			fmt.Printf("%v\n%v\n", direction, hex.Dump(buffer[:bufferLength]))
+			//fmt.Printf("%v\n%v\n", direction, hex.Dump(buffer[:bufferLength]))
 
 			if cap(data.buffer) == 0 {
 				data.buffer = make([][]byte, 0)
