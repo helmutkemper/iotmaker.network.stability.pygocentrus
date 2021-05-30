@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	dockerBuilder "github.com/helmutkemper/iotmaker.docker.builder"
 	pygocentrus "github.com/helmutkemper/iotmaker.network.stability.pygocentrus"
@@ -14,9 +15,42 @@ import (
 	"time"
 )
 
-type ParserFunc struct{}
+type NatsInfo struct {
+	ServerId   string `json:"server_id"`
+	ServerName string `json:"server_name"`
+	Version    string `json:"version"`
+	Proto      int    `json:"proto"`
+	GitCommit  string `json:"git_commit"`
+	GoVersion  string `json:"go"`
+	Host       string `json:"host"`
+	Port       int    `json:"port"`
+	Headers    bool   `json:"headers"`
+	PayloadMax int64  `json:"max_payload"`
+	ClientId   int64  `json:"client_id"`
+	ClientIp   string `json:"client_ip"`
+	Cluster    string `json:"cluster"`
+}
 
-func (e ParserFunc) filterUpToTheByteSlice(data, end []byte) (found bool, filtered, leftover []byte) {
+type NatsConnection struct {
+	Verbose      bool   `json:"verbose"`
+	Pedantic     bool   `json:"pedantic"`
+	TlsRequired  bool   `json:"tls_required"`
+	Name         string `json:"name"`
+	Lang         string `json:"lang"`
+	Version      string `json:"version"`
+	Protocol     int64  `json:"protocol"`
+	Echo         bool   `json:"echo"`
+	Headers      bool   `json:"headers"`
+	NoResponders bool   `json:"no_responders"`
+}
+
+type Filter struct{}
+
+type ParserFunc struct {
+	Filter
+}
+
+func (e Filter) filterUpToTheByteSlice(data, end []byte) (found bool, filtered, leftover []byte) {
 	var lenData = len(data)
 	var dataCopy = make([]byte, lenData)
 	copy(dataCopy, data)
@@ -42,7 +76,7 @@ func (e ParserFunc) filterUpToTheByteSlice(data, end []byte) (found bool, filter
 	return
 }
 
-func (e ParserFunc) filterLength(data []byte, length int) (found bool, filtered, leftover []byte) {
+func (e Filter) filterLength(data []byte, length int) (found bool, filtered, leftover []byte) {
 	var lenData = len(data)
 	var dataCopy = make([]byte, lenData)
 	copy(dataCopy, data)
@@ -62,7 +96,7 @@ func (e ParserFunc) filterLength(data []byte, length int) (found bool, filtered,
 	return
 }
 
-func (e ParserFunc) filter(data, start, end []byte) (found bool, filtered, leftover []byte) {
+func (e Filter) filter(data, start, end []byte) (found bool, filtered, leftover []byte) {
 	var lenData = len(data)
 	var dataCopy = make([]byte, lenData)
 	copy(dataCopy, data)
@@ -97,143 +131,129 @@ func (e ParserFunc) filter(data, start, end []byte) (found bool, filtered, lefto
 	return
 }
 
-func (e ParserFunc) FilterInfo(data []byte) (found bool, filtered, leftover []byte) {
+func (e ParserFunc) FilterInfo(data []byte) (found bool, infoJson, leftover []byte, err error) {
 	var lenData = len(data)
 	var dataCopy = make([]byte, lenData)
 	copy(dataCopy, data)
 
-	found, filtered, leftover = e.filter(dataCopy, []byte("INFO "), []byte(" \r\n"))
-	log.Printf("Info: %s", filtered)
+	found, infoJson, leftover = e.filter(dataCopy, []byte("INFO "), []byte(" \r\n"))
 	return
 }
 
-func (e ParserFunc) FilterConnect(data []byte) (found bool, filtered, leftover []byte) {
+func (e ParserFunc) FilterConnect(data []byte) (found bool, connectionJson, leftover []byte, err error) {
 	var lenData = len(data)
 	var dataCopy = make([]byte, lenData)
 	copy(dataCopy, data)
 
-	found, filtered, leftover = e.filter(dataCopy, []byte("CONNECT "), []byte("\r\n"))
-	log.Printf("Connect: %s", filtered)
+	found, connectionJson, leftover = e.filter(dataCopy, []byte("CONNECT "), []byte("\r\n"))
 	return
 }
 
-func (e ParserFunc) FilterPing(data []byte) (found bool, filtered, leftover []byte) {
+func (e ParserFunc) FilterPing(data []byte) (found bool, ping, leftover []byte, err error) {
 	var lenData = len(data)
 	var dataCopy = make([]byte, lenData)
 	copy(dataCopy, data)
 
-	found, filtered, leftover = e.filter(dataCopy, []byte("PING"), []byte("\r\n"))
-	log.Printf("ping: %v", found)
+	found, ping, leftover = e.filter(dataCopy, []byte("PING"), []byte("\r\n"))
+	ping = []byte("PING")
 	return
 }
 
-func (e ParserFunc) FilterPong(data []byte) (found bool, filtered, leftover []byte) {
+func (e ParserFunc) FilterPong(data []byte) (found bool, pong, leftover []byte, err error) {
 	var lenData = len(data)
 	var dataCopy = make([]byte, lenData)
 	copy(dataCopy, data)
 
-	found, filtered, leftover = e.filter(dataCopy, []byte("PONG"), []byte("\r\n"))
-	log.Printf("pong: %v", found)
+	found, pong, leftover = e.filter(dataCopy, []byte("PONG"), []byte("\r\n"))
+	pong = []byte("PONG")
 	return
 }
 
-func (e ParserFunc) FilterSubscribe(data []byte) (found bool, filtered, leftover []byte) {
+func (e ParserFunc) FilterSubscribe(data []byte) (found bool, id int64, subject []byte, leftover []byte, err error) {
 	var lenData = len(data)
 	var dataCopy = make([]byte, lenData)
 	copy(dataCopy, data)
 
-	var subject []byte
-	var id []byte
+	var idAsByte []byte
 	found, subject, leftover = e.filter(dataCopy, []byte("SUB "), []byte(" "))
 	if found == false {
 		return
 	}
 
-	_, id, leftover = e.filter(leftover, []byte(" "), []byte("\r\n"))
-	log.Printf("subject: %s", subject)
-	log.Printf("id: %s", id)
+	_, idAsByte, leftover = e.filter(leftover, []byte(" "), []byte("\r\n"))
+
+	id, err = strconv.ParseInt(string(idAsByte), 10, 64)
 	return
 }
 
-func (e ParserFunc) FilterPublish(data []byte) (found bool, filtered, leftover []byte) {
+func (e ParserFunc) FilterPublish(data []byte) (found bool, subject, message, leftover []byte, err error) {
 	var lenData = len(data)
 	var dataCopy = make([]byte, lenData)
 	copy(dataCopy, data)
 
-	var subject []byte
-	var message []byte
-	var length []byte
+	var lengthAsByte []byte
+	var length int64
 	found, subject, leftover = e.filter(dataCopy, []byte("PUB "), []byte(" "))
 	if found == false {
 		return
 	}
 
-	log.Print("FilterPublish()")
-	log.Printf("subject: >%s<", subject)
+	_, lengthAsByte, leftover = e.filterUpToTheByteSlice(leftover, []byte("\r\n"))
 
-	_, length, leftover = e.filterUpToTheByteSlice(leftover, []byte("\r\n"))
+	length, err = strconv.ParseInt(string(lengthAsByte), 10, 64)
 
-	log.Printf("length: >%s<", length)
-
-	l, _ := strconv.ParseInt(string(length), 10, 64)
-	_ = l
-
-	_, message, leftover = e.filterLength(leftover, int(l))
-	log.Printf("message: >%s<", message)
+	_, message, leftover = e.filterLength(leftover, int(length))
 
 	_, _, leftover = e.filterUpToTheByteSlice(leftover, []byte("\r\n"))
 	return
 }
 
-func (e ParserFunc) FilterUnsubscribe(data []byte) (found bool, filtered, leftover []byte) {
+func (e ParserFunc) FilterUnsubscribe(data []byte) (found bool, id int64, leftover []byte, err error) {
 	var lenData = len(data)
 	var dataCopy = make([]byte, lenData)
 	copy(dataCopy, data)
 
-	var id []byte
-	found, id, leftover = e.filter(dataCopy, []byte("UNSUB "), []byte(" \r\n"))
+	var idAsBute []byte
+	found, idAsBute, leftover = e.filter(dataCopy, []byte("UNSUB "), []byte(" \r\n"))
 	if found == false {
 		return
 	}
 
-	log.Printf("FilterUnsubscribe()")
-	log.Printf("id: >%s<", id)
+	id, err = strconv.ParseInt(string(idAsBute), 10, 64)
 	return
 }
 
-func (e ParserFunc) FilterMessage(data []byte) (found bool, filtered, leftover []byte) {
+func (e ParserFunc) FilterMessage(data []byte) (found bool, id int64, subject []byte, message []byte, leftover []byte, err error) {
 	var lenData = len(data)
 	var dataCopy = make([]byte, lenData)
 	copy(dataCopy, data)
 
-	var id []byte
-	var subject []byte
-	var message []byte
-	var length []byte
+	var idAsByte []byte
+	var lengthAsByte []byte
+	var length int64
 	found, subject, leftover = e.filter(dataCopy, []byte("MSG "), []byte(" "))
 	if found == false {
 		return
 	}
 
-	log.Print("FilterMessage()")
-	log.Printf("subject: >%s<", subject)
-
-	found, id, leftover = e.filterUpToTheByteSlice(leftover, []byte(" "))
+	found, idAsByte, leftover = e.filterUpToTheByteSlice(leftover, []byte(" "))
 	if found == false {
 		return
 	}
 
-	log.Printf("id: >%s<", id)
+	id, err = strconv.ParseInt(string(idAsByte), 10, 64)
+	if err != nil {
+		return
+	}
 
-	_, length, leftover = e.filterUpToTheByteSlice(leftover, []byte("\r\n"))
+	_, lengthAsByte, leftover = e.filterUpToTheByteSlice(leftover, []byte("\r\n"))
 
-	log.Printf("length: >%s<", length)
+	length, err = strconv.ParseInt(string(lengthAsByte), 10, 64)
+	if err != nil {
+		return
+	}
 
-	l, _ := strconv.ParseInt(string(length), 10, 64)
-	_ = l
-
-	_, message, leftover = e.filterLength(leftover, int(l))
-	log.Printf("message: >%s<", message)
+	_, message, leftover = e.filterLength(leftover, int(length))
 
 	_, _, leftover = e.filterUpToTheByteSlice(leftover, []byte("\r\n"))
 	return
@@ -245,6 +265,11 @@ func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err err
 	copy(dataParser, data)
 	fmt.Println("")
 	//fmt.Println("")
+
+	var infoJson []byte
+	var connectJson []byte
+	var info NatsInfo
+	var connection NatsConnection
 
 	// \r 0x0D
 	// \n 0x0A
@@ -258,43 +283,70 @@ func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err err
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("INFO ")) == true {
-			_, _, dataParser = e.FilterInfo(dataParser)
-			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+			_, infoJson, dataParser, err = e.FilterInfo(dataParser)
+			if err != nil {
+				return
+			}
+
+			err = json.Unmarshal(infoJson, &info)
+			if err != nil {
+				return
+			}
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("CONNECT ")) == true {
-			_, _, dataParser = e.FilterConnect(dataParser)
-			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+			_, connectJson, dataParser, err = e.FilterConnect(dataParser)
+			if err != nil {
+				return
+			}
+
+			log.Printf("%s", connectJson)
+			err = json.Unmarshal(connectJson, &connection)
+			if err != nil {
+				return
+			}
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("PING\r\n")) == true {
-			_, _, dataParser = e.FilterPing(dataParser)
-			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+			_, _, dataParser, err = e.FilterPing(dataParser)
+			if err != nil {
+				return
+			}
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("PONG\r\n")) == true {
-			_, _, dataParser = e.FilterPong(dataParser)
-			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+			_, _, dataParser, err = e.FilterPong(dataParser)
+			if err != nil {
+				return
+			}
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("SUB ")) == true {
-			_, _, dataParser = e.FilterSubscribe(dataParser)
-			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+			_, _, _, dataParser, err = e.FilterSubscribe(dataParser)
+			if err != nil {
+				return
+			}
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("PUB ")) == true {
-			_, _, dataParser = e.FilterPublish(dataParser)
-			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+			_, _, _, dataParser, err = e.FilterPublish(dataParser)
+			if err != nil {
+				return
+			}
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("UNSUB ")) == true {
-			_, _, dataParser = e.FilterUnsubscribe(dataParser)
-			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+			_, _, dataParser, err = e.FilterUnsubscribe(dataParser)
+			if err != nil {
+				return
+			}
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("MSG ")) == true {
-			_, _, dataParser = e.FilterMessage(dataParser)
-			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+			_, _, _, _, dataParser, err = e.FilterMessage(dataParser)
+			if err != nil {
+				return
+			}
 		}
 
 		if l == len(dataParser) {
