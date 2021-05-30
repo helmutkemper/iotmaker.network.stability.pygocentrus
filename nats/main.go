@@ -16,98 +16,298 @@ import (
 
 type ParserFunc struct{}
 
-func (e ParserFunc) FilterMessage(data []byte) (restOdFata []byte, err error) {
-	var indexHeader = bytes.Index(data, []byte("MSG "))
-	indexHeader += 4
-	var indexSpace = bytes.Index(data[indexHeader:], []byte(" "))
-	var subject = data[indexHeader : indexHeader+indexSpace]
+func (e ParserFunc) filterUpToTheByteSlice(data, end []byte) (found bool, filtered, leftover []byte) {
+	var lenData = len(data)
+	var dataCopy = make([]byte, lenData)
+	copy(dataCopy, data)
+
+	var lenEnd = len(end)
+	var cursorEnd, cursorLeftover int
+
+	var indexEnd = bytes.Index(dataCopy, end)
+	if indexEnd == -1 {
+		return
+	}
+
+	cursorEnd = indexEnd
+	cursorLeftover = cursorEnd + lenEnd
+
+	filtered = make([]byte, cursorEnd)
+	copy(filtered, dataCopy[0:cursorEnd])
+
+	leftover = make([]byte, lenData-cursorLeftover)
+	copy(leftover, dataCopy[cursorLeftover:])
+
+	found = true
+	return
+}
+
+func (e ParserFunc) filterLength(data []byte, length int) (found bool, filtered, leftover []byte) {
+	var lenData = len(data)
+	var dataCopy = make([]byte, lenData)
+	copy(dataCopy, data)
+
+	var cursorEnd, cursorLeftover int
+
+	cursorEnd = length
+	cursorLeftover = cursorEnd
+
+	filtered = make([]byte, cursorEnd)
+	copy(filtered, dataCopy[0:cursorEnd])
+
+	leftover = make([]byte, lenData-cursorLeftover)
+	copy(leftover, dataCopy[cursorLeftover:])
+
+	found = true
+	return
+}
+
+func (e ParserFunc) filter(data, start, end []byte) (found bool, filtered, leftover []byte) {
+	var lenData = len(data)
+	var dataCopy = make([]byte, lenData)
+	copy(dataCopy, data)
+
+	var lenStart = len(start)
+	var lenEnd = len(end)
+	var cursorStart, cursorEnd, cursorLeftover int
+
+	var indexStart = bytes.Index(dataCopy, start)
+	if indexStart == -1 {
+		return
+	}
+
+	cursorStart = indexStart + lenStart
+
+	var indexEnd = bytes.Index(dataCopy[cursorStart:], end)
+	if indexEnd == -1 {
+		return
+	}
+
+	cursorEnd = cursorStart + indexEnd
+	cursorLeftover = cursorEnd + lenEnd
+
+	filtered = make([]byte, cursorEnd-cursorStart)
+	copy(filtered, dataCopy[cursorStart:cursorEnd])
+
+	//                      [:indexStart]+(data[cursorLeftover:])
+	leftover = make([]byte, indexStart+(lenData-cursorLeftover))
+	copy(leftover, append(dataCopy[:indexStart], dataCopy[cursorLeftover:]...))
+
+	found = true
+	return
+}
+
+func (e ParserFunc) FilterInfo(data []byte) (found bool, filtered, leftover []byte) {
+	var lenData = len(data)
+	var dataCopy = make([]byte, lenData)
+	copy(dataCopy, data)
+
+	found, filtered, leftover = e.filter(dataCopy, []byte("INFO "), []byte(" \r\n"))
+	log.Printf("Info: %s", filtered)
+	return
+}
+
+func (e ParserFunc) FilterConnect(data []byte) (found bool, filtered, leftover []byte) {
+	var lenData = len(data)
+	var dataCopy = make([]byte, lenData)
+	copy(dataCopy, data)
+
+	found, filtered, leftover = e.filter(dataCopy, []byte("CONNECT "), []byte("\r\n"))
+	log.Printf("Connect: %s", filtered)
+	return
+}
+
+func (e ParserFunc) FilterPing(data []byte) (found bool, filtered, leftover []byte) {
+	var lenData = len(data)
+	var dataCopy = make([]byte, lenData)
+	copy(dataCopy, data)
+
+	found, filtered, leftover = e.filter(dataCopy, []byte("PING"), []byte("\r\n"))
+	log.Printf("ping: %v", found)
+	return
+}
+
+func (e ParserFunc) FilterPong(data []byte) (found bool, filtered, leftover []byte) {
+	var lenData = len(data)
+	var dataCopy = make([]byte, lenData)
+	copy(dataCopy, data)
+
+	found, filtered, leftover = e.filter(dataCopy, []byte("PONG"), []byte("\r\n"))
+	log.Printf("pong: %v", found)
+	return
+}
+
+func (e ParserFunc) FilterSubscribe(data []byte) (found bool, filtered, leftover []byte) {
+	var lenData = len(data)
+	var dataCopy = make([]byte, lenData)
+	copy(dataCopy, data)
+
+	var subject []byte
+	var id []byte
+	found, subject, leftover = e.filter(dataCopy, []byte("SUB "), []byte(" "))
+	if found == false {
+		return
+	}
+
+	_, id, leftover = e.filter(leftover, []byte(" "), []byte("\r\n"))
 	log.Printf("subject: %s", subject)
+	log.Printf("id: %s", id)
+	return
+}
 
-	// coloca o data no início do n start message
-	data = data[indexHeader+indexSpace+1:]
+func (e ParserFunc) FilterPublish(data []byte) (found bool, filtered, leftover []byte) {
+	var lenData = len(data)
+	var dataCopy = make([]byte, lenData)
+	copy(dataCopy, data)
 
-	var indexStart = bytes.Index(data, []byte(" "))
-	var dataStart = data[:indexStart]
-	//log.Printf("start: %s", dataStart)
-
-	// coloca o data no início do n length message
-	data = data[indexStart+1:]
-	//log.Printf("data: >%s<", data)
-
-	var indexLen = bytes.Index(data, []byte("\r"))
-	var dataLen = data[:indexLen]
-
-	//log.Printf("length: %s", dataLen)
-
-	// coloca data no início da mensagem
-	data = data[indexLen+1+1:]
-
-	var startInt int64
-	var lenInt int64
-	startInt, err = strconv.ParseInt(string(dataStart), 10, 64)
-	if err != nil {
-		return
-	}
-	lenInt, err = strconv.ParseInt(string(dataLen), 10, 64)
-	if err != nil {
+	var subject []byte
+	var message []byte
+	var length []byte
+	found, subject, leftover = e.filter(dataCopy, []byte("PUB "), []byte(" "))
+	if found == false {
 		return
 	}
 
-	var message = data[startInt-1 : lenInt]
-	log.Printf("message: %s", message)
+	log.Print("FilterPublish()")
+	log.Printf("subject: >%s<", subject)
 
-	// coloca data no fim da mensagem
-	data = data[startInt-1+lenInt+2:]
+	_, length, leftover = e.filterUpToTheByteSlice(leftover, []byte("\r\n"))
 
-	if bytes.Equal(data, []byte("PONG\r\n")) == true {
-		data = make([]byte, 0)
+	log.Printf("length: >%s<", length)
+
+	l, _ := strconv.ParseInt(string(length), 10, 64)
+	_ = l
+
+	_, message, leftover = e.filterLength(leftover, int(l))
+	log.Printf("message: >%s<", message)
+
+	_, _, leftover = e.filterUpToTheByteSlice(leftover, []byte("\r\n"))
+	return
+}
+
+func (e ParserFunc) FilterUnsubscribe(data []byte) (found bool, filtered, leftover []byte) {
+	var lenData = len(data)
+	var dataCopy = make([]byte, lenData)
+	copy(dataCopy, data)
+
+	var id []byte
+	found, id, leftover = e.filter(dataCopy, []byte("UNSUB "), []byte(" \r\n"))
+	if found == false {
+		return
 	}
 
-	restOdFata = data
+	log.Printf("FilterUnsubscribe()")
+	log.Printf("id: >%s<", id)
+	return
+}
+
+func (e ParserFunc) FilterMessage(data []byte) (found bool, filtered, leftover []byte) {
+	var lenData = len(data)
+	var dataCopy = make([]byte, lenData)
+	copy(dataCopy, data)
+
+	var id []byte
+	var subject []byte
+	var message []byte
+	var length []byte
+	found, subject, leftover = e.filter(dataCopy, []byte("MSG "), []byte(" "))
+	if found == false {
+		return
+	}
+
+	log.Print("FilterMessage()")
+	log.Printf("subject: >%s<", subject)
+
+	found, id, leftover = e.filterUpToTheByteSlice(leftover, []byte(" "))
+	if found == false {
+		return
+	}
+
+	log.Printf("id: >%s<", id)
+
+	_, length, leftover = e.filterUpToTheByteSlice(leftover, []byte("\r\n"))
+
+	log.Printf("length: >%s<", length)
+
+	l, _ := strconv.ParseInt(string(length), 10, 64)
+	_ = l
+
+	_, message, leftover = e.filterLength(leftover, int(l))
+	log.Printf("message: >%s<", message)
+
+	_, _, leftover = e.filterUpToTheByteSlice(leftover, []byte("\r\n"))
 	return
 }
 
 func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err error) {
 	dataSize = len(data)
-
+	var dataParser = make([]byte, dataSize)
+	copy(dataParser, data)
 	fmt.Println("")
-	fmt.Println("")
+	//fmt.Println("")
 
 	// \r 0x0D
 	// \n 0x0A
-	if direction == "in" {
-		if bytes.HasPrefix(data, []byte("INFO ")) == true && bytes.HasSuffix(data, []byte(" \r\n")) == true {
-			var driverInfo = data[5 : len(data)-3]
-			log.Printf("nats driver info: %s", driverInfo)
-			return
+	fmt.Printf("direction: %v\n%v\n", direction, hex.Dump(data))
+
+	for {
+		var l = len(dataParser)
+
+		if l == 0 {
+			break
 		}
 
-		if bytes.Equal(data, []byte("PONG\r\n")) == true {
-			log.Printf("PONG")
-			return
+		if bytes.HasPrefix(dataParser, []byte("INFO ")) == true {
+			_, _, dataParser = e.FilterInfo(dataParser)
+			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
 		}
 
-		var pass = false
-		for {
-			if bytes.Contains(data, []byte("MSG")) == true {
-				pass = true
-				data, _ = e.FilterMessage(data)
-				//return
-			} else {
-				if pass == true {
-					return
-				}
-				break
-			}
+		if bytes.HasPrefix(dataParser, []byte("CONNECT ")) == true {
+			_, _, dataParser = e.FilterConnect(dataParser)
+			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+		}
+
+		if bytes.HasPrefix(dataParser, []byte("PING\r\n")) == true {
+			_, _, dataParser = e.FilterPing(dataParser)
+			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+		}
+
+		if bytes.HasPrefix(dataParser, []byte("PONG\r\n")) == true {
+			_, _, dataParser = e.FilterPong(dataParser)
+			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+		}
+
+		if bytes.HasPrefix(dataParser, []byte("SUB ")) == true {
+			_, _, dataParser = e.FilterSubscribe(dataParser)
+			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+		}
+
+		if bytes.HasPrefix(dataParser, []byte("PUB ")) == true {
+			_, _, dataParser = e.FilterPublish(dataParser)
+			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+		}
+
+		if bytes.HasPrefix(dataParser, []byte("UNSUB ")) == true {
+			_, _, dataParser = e.FilterUnsubscribe(dataParser)
+			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+		}
+
+		if bytes.HasPrefix(dataParser, []byte("MSG ")) == true {
+			_, _, dataParser = e.FilterMessage(dataParser)
+			fmt.Printf("after: \n%v\n", hex.Dump(dataParser))
+		}
+
+		if l == len(dataParser) {
+			log.Print("falhou!!!!!!!!!!!!!!!!!!")
+			break
 		}
 	}
 
-	fmt.Printf("direction: %v\n%v\n", direction, hex.Dump(data))
 	return
 }
 
 func main() {
-	installNats()
+	//installNats()
 	proxy()
 	natsTest()
 }
@@ -169,7 +369,8 @@ func proxy() {
 	var p pygocentrus.ParserInterface = &ParserFunc{}
 
 	var proxy pygocentrus.Proxy
-	proxy.SetBufferSize(32 * 1024)
+	proxy.SetBufferSize(1024)
+	//proxy.SetDelayMillesecond(5999, 6000)
 	proxy.SetParserFunction(p)
 
 	go func() {
@@ -183,7 +384,7 @@ func proxy() {
 }
 
 func natsTest() {
-	nc, err := nats.Connect("nats://127.0.0.1:4222")
+	nc, err := nats.Connect("nats://127.0.0.1:4222", nats.Timeout(time.Second*20))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -199,7 +400,7 @@ func natsTest() {
 
 	// Just to not collide using the demo server with other users.
 	subject := nats.NewInbox()
-	subject = "1234567890"
+	//subject = "1234567890"
 
 	// This callback will process each message slowly
 	sub, err := nc.Subscribe(subject, func(m *nats.Msg) {
@@ -208,7 +409,7 @@ func natsTest() {
 			return
 		}
 
-		log.Printf("message from sample code: %s", m.Data)
+		//log.Printf("message from sample code: %s", m.Data)
 
 		time.Sleep(100 * time.Millisecond)
 		count++
