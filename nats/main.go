@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	dockerBuilder "github.com/helmutkemper/iotmaker.docker.builder"
@@ -263,7 +262,7 @@ func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err err
 	dataSize = len(data)
 	var dataParser = make([]byte, dataSize)
 	copy(dataParser, data)
-	fmt.Println("")
+	//fmt.Println("")
 	//fmt.Println("")
 
 	var infoJson []byte
@@ -273,7 +272,9 @@ func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err err
 
 	// \r 0x0D
 	// \n 0x0A
-	fmt.Printf("direction: %v\n%v\n", direction, hex.Dump(data))
+	//fmt.Printf("direction: %v\n%v\n", direction, hex.Dump(data))
+
+	start := time.Now()
 
 	for {
 		var l = len(dataParser)
@@ -288,6 +289,7 @@ func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err err
 				return
 			}
 
+			log.Printf("info: %s", infoJson)
 			err = json.Unmarshal(infoJson, &info)
 			if err != nil {
 				return
@@ -300,7 +302,7 @@ func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err err
 				return
 			}
 
-			log.Printf("%s", connectJson)
+			log.Printf("connect: %s", connectJson)
 			err = json.Unmarshal(connectJson, &connection)
 			if err != nil {
 				return
@@ -312,6 +314,8 @@ func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err err
 			if err != nil {
 				return
 			}
+
+			log.Printf("ping: %s", "PING")
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("PONG\r\n")) == true {
@@ -319,34 +323,50 @@ func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err err
 			if err != nil {
 				return
 			}
+
+			log.Printf("pong: %s", "PONG")
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("SUB ")) == true {
-			_, _, _, dataParser, err = e.FilterSubscribe(dataParser)
+			var id int64
+			var subject []byte
+			_, id, subject, dataParser, err = e.FilterSubscribe(dataParser)
 			if err != nil {
 				return
 			}
+
+			log.Printf("subscribe: %v - %s", id, subject)
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("PUB ")) == true {
-			_, _, _, dataParser, err = e.FilterPublish(dataParser)
+			var subject, message []byte
+			_, subject, message, dataParser, err = e.FilterPublish(dataParser)
 			if err != nil {
 				return
 			}
+
+			log.Printf("publish: %s - %s", subject, message)
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("UNSUB ")) == true {
+			var id int64
 			_, _, dataParser, err = e.FilterUnsubscribe(dataParser)
 			if err != nil {
 				return
 			}
+
+			log.Printf("unsubscribe: %v", id)
 		}
 
 		if bytes.HasPrefix(dataParser, []byte("MSG ")) == true {
-			_, _, _, _, dataParser, err = e.FilterMessage(dataParser)
+			var id int64
+			var subject, message []byte
+			_, id, subject, message, dataParser, err = e.FilterMessage(dataParser)
 			if err != nil {
 				return
 			}
+
+			log.Printf("message[%v]: %s - %s", id, subject, message)
 		}
 
 		if l == len(dataParser) {
@@ -355,6 +375,7 @@ func (e ParserFunc) Parser(data []byte, direction string) (dataSize int, err err
 		}
 	}
 
+	log.Printf("time: %v", time.Since(start))
 	return
 }
 
